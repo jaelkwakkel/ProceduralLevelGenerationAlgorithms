@@ -5,29 +5,61 @@ namespace ProceduralGenerationConsole
     internal class AStar
     {
         private Node[,] grid;
+        private readonly List<int> avoidableObjectIds;
 
-        public AStar(int[,] collidableObjects)
+        public AStar(int[,] collidableObjects, List<int> collidableObjectIds)
         {
+            avoidableObjectIds = collidableObjectIds;
             grid = GenerateGrid(collidableObjects);
         }
 
-        public List<Vector2>? Calculate(Vector2 startPosition, Vector2 endPosition, bool allowDiagonal = false)
+        public List<Vector2> GetValidSpotsInRange(Vector2 currentPosition, int range)
+        {
+            List<Vector2> validSpots = new();
+            Node startGridPoint = GetPointOnGrid(currentPosition);
+            for (int i = startGridPoint.gridPosition.x + range - 1; i >= startGridPoint.gridPosition.x - range; i--)
+            {
+                for (int j = startGridPoint.gridPosition.y - range; j <= startGridPoint.gridPosition.y + range; j++)
+                {
+                    Node currentNode = GetPointOnGrid(new Vector2(i, j));
+                    if (currentNode != null && currentNode.canTraverse)
+                        validSpots.Add(new Vector2(i, j));
+                }
+            }
+            return validSpots;
+        }
+
+        public List<Vector2> Calculate(Vector2 startPosition, Vector2 endPosition, bool allowDiagonal = false)
         {
             ResetGrid();
             HashSet<Node> openList = [];
             HashSet<(int, int)> closedTable = [];
 
             Node? startGridPoint = GetPointOnGrid(startPosition);
-            Node? endGridPoint = GetPointOnGrid(endPosition);
-            if (startGridPoint == null || endGridPoint == null)
+            if (!startGridPoint.canTraverse)
             {
-                return null;
+                int i = 1;
+                while (!startGridPoint.canTraverse)
+                {
+                    Vector2 newPosition = startPosition + new Vector2(i, 0);
+                    startGridPoint = GetPointOnGrid(newPosition);
+                    if (startGridPoint != null && startGridPoint.canTraverse)
+                        break;
+
+                    newPosition = startPosition + new Vector2(-i, 0);
+                    startGridPoint = GetPointOnGrid(newPosition);
+                    if (startGridPoint != null && startGridPoint.canTraverse)
+                        break;
+
+                    i++;
+                }
             }
+            Node endGridPoint = GetPointOnGrid(endPosition);
+            if (startGridPoint == null || endGridPoint == null)
+                return null;
 
             if (!startGridPoint.canTraverse || !endGridPoint.canTraverse)
-            {
                 return null;
-            }
 
             grid = GenerateWeights(endGridPoint);
             openList.Add(startGridPoint);
@@ -54,9 +86,7 @@ namespace ProceduralGenerationConsole
                     for (int j = currentNode.gridPosition.y - 1; j <= currentNode.gridPosition.y + 1; j++)
                     {
                         if (!allowDiagonal && currentNode.gridPosition.x != i && currentNode.gridPosition.y != j || !IsPositionWithinGridBounds(i, j) || !grid[i, j].canTraverse || closedTable.Contains((i, j)))
-                        {
                             continue;
-                        }
 
                         float gCost = currentNode.gCost + GetDistance(currentNode, grid[i, j]);
 
@@ -66,10 +96,9 @@ namespace ProceduralGenerationConsole
                             grid[i, j].gCost = gCost;
                             grid[i, j].hCost = GetGridPointWeight(i, j);
                             grid[i, j].fCost = gCost + grid[i, j].hCost;
+
                             if (!openList.Contains(grid[i, j]))
-                            {
                                 openList.Add(grid[i, j]);
-                            }
                         }
                     }
                 }
@@ -80,8 +109,8 @@ namespace ProceduralGenerationConsole
 
         private List<Vector2> ReconstructPath(Node gridPoint)
         {
-            List<Vector2> resultPath = [];
-            Node? currentNode = gridPoint;
+            List<Vector2> resultPath = new();
+            Node currentNode = gridPoint;
             while (currentNode != null)
             {
                 resultPath.Add(new Vector2(currentNode.gridPosition.x, currentNode.gridPosition.y));
@@ -145,11 +174,12 @@ namespace ProceduralGenerationConsole
             {
                 for (int j = 0; j < result.GetLength(1); j++)
                 {
-                    result[i, j] = new Node(collidableObjects[i, j] != 2, 0, (i, j));
+                    result[i, j] = new Node(!avoidableObjectIds.Contains(collidableObjects[i, j]), 0, (i, j));
                 }
             }
 
             return result;
         }
     }
+
 }
